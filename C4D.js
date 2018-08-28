@@ -17,24 +17,16 @@ app.use(bodyParser.urlencoded({
   extended: true
 }));
 
-server.listen(init.portNode, init.hostNode, function() {
-  console.log('* * * ECOUTE SUR http://' + init.hostNode + ':' + init.portNode);
+server.listen(init.portNode, init.hostNode);
+app.use(express.static(__dirname + '/html'));
+
+// __________________________________________________________________________________Login statik
+app.get('/', function(req, res) {
+  res.sendFile(path.join(__dirname + '/html/' + 'index.html'));
 });
 
-//  __________________________________________________________________________________Function
-function stringifyData(data) {
-  var arKey = Object.keys(data);
-  var arVal = Object.values(data);
-  for (var i = 0; i < arKey.length; i++) {
-    if (typeof arVal[i] != 'string') {
-      data[arKey[i]] = JSON.stringify(arVal[i]);
-    }
-  }
-  return data;
-}
-
 //  __________________________________________________________________________________4D_Global
-function C4D(http, socket, data) {
+function C4D(data) {
   var options = {
     method: 'POST',
     url: init.url4D,
@@ -42,17 +34,22 @@ function C4D(http, socket, data) {
       'cache-control': 'no-cache',
       'content-type': 'multipart/form-data;'
     },
-    formData: stringifyData(data)
+    formData: data
   };
 
   request(options, function(error, response, body) {
     if (response.statusCode == 200) {
       var body = JSON.parse(response.body);
-      if (socket) {
-        socket.emit(body.action, body);
-      }
-      if (http) {
-        http.send(body);
+      switch (data.action) {
+        case 'function':
+          data.callBack(body);
+          break;
+        case 'http':
+          data.callBack.send(body);
+          break;
+        case 'io':
+          data.callBack.emit(body.action, body);
+          break;
       }
       console.log({
         C4D: body
@@ -63,24 +60,40 @@ function C4D(http, socket, data) {
 }
 
 // __________________________________________________________________________________HTTP
-app.get("/C4D", function(req, res) {
+app.get("/C4DHTTP", function(req, res) {
   console.log({
-      C4DHTTP: req.originalUrl
+    C4DHTTP: req.originalUrl
   });
-  C4D(res, null, req.query);
+  C4D({
+    action: 'http',
+    callBack: res,
+    data: req.query
+  });
 });
 
 // __________________________________________________________________________________IO
 io.on('connection', function(socket) {
 
-  socket.on('C4D', function(data) {
+  socket.on('C4DFN', function(data, fn) {
+    console.log({
+      C4DFN: data
+    });
+    C4D({
+      action: 'function',
+      callBack: fn,
+      data: data
+    });
+  });
+
+  socket.on('C4DIO', function(data) {
     console.log({
       C4DIO: data
     });
-    C4D(null, socket, data);
+    C4D({
+      action: 'io',
+      callBack: socket,
+      data: data
+    });
   });
 
-  socket.on('disconnect', function() {
-
-  });
 });
